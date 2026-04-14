@@ -12,14 +12,30 @@ const JobSearch = () => {
             );
 
             const data = await res.json();
-            setJobs(data); // store jobs in state
+
+            console.log("RAW RESPONSE:");
+            console.log(data);
+
+            console.log("LENGTH:", data.length);
+
+            console.log("STRINGIFIED:");
+            console.log(JSON.stringify(data, null, 2));
+
+            if (Array.isArray(data)) {
+                setJobs(data);
+            } else {
+                console.error("Backend error:", data);
+                setJobs([]);
+            }
         } catch (err) {
             console.error("Error fetching jobs:", err);
+            setJobs([]);
         }
     };
 
     return (
         <div style={{ padding: "20px" }}>
+
             <h2>Job Search</h2>
 
             {/* 🔍 Query input */}
@@ -45,13 +61,15 @@ const JobSearch = () => {
             </button>
 
             {/* 📋 Results */}
-            <ul>
+            <div>
+                <p>Total jobs in state: {jobs.length}</p>
+
                 {jobs.map((job, index) => (
-                    <li key={index}>
-                        <strong>{job.title}</strong> — {job.company} ({job.location})
-                    </li>
+                    <div key={index}>
+                        #{index + 1} — {job.title}
+                    </div>
                 ))}
-            </ul>
+            </div>
         </div>
     );
 };
