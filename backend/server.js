@@ -1,30 +1,61 @@
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
+const { geocodeLocation } = require("./services/geolocation");
 
 const app = express();
 app.use(cors());
 
 const PORT = 3001;
 
-// ----------------------------
-// CACHE (per query + location)
-// ----------------------------
-const cache = new Map();
-const CACHE_TIME = 60 * 1000; // 1 minute
-
-// ----------------------------
-// Helpers
-// ----------------------------
-const safeRun = async (fn) => {
-    try {
-        return await fn;
-    } catch (err) {
-        console.log("Safe run error:", err.message);
-        return [];
+// =====================================================
+// WORKER QUEUE SYSTEM 
+// =====================================================
+class Queue {
+    constructor(concurrency = 8) {
+        this.concurrency = concurrency;
+        this.running = 0;
+        this.queue = [];
     }
-};
 
+    add(task) {
+        return new Promise((resolve, reject) => {
+            this.queue.push({ task, resolve, reject });
+            this.next();
+        });
+    }
+
+    next() {
+        if (this.running >= this.concurrency || this.queue.length === 0) return;
+
+        const { task, resolve, reject } = this.queue.shift();
+        this.running++;
+
+        task()
+            .then(resolve)
+            .catch(reject)
+            .finally(() => {
+                this.running--;
+                this.next();
+            });
+    }
+}
+
+const scrapeQueue = new Queue(10);
+
+// queued axios (ALL requests go through worker pool)
+const queuedGet = (url, options = {}) =>
+    scrapeQueue.add(() => axios.get(url, options));
+
+// =====================================================
+// CACHE
+// =====================================================
+const cache = new Map();
+const CACHE_TIME = 60 * 1000;
+
+// =====================================================
+// HELPERS
+// =====================================================
 function cleanLocation(loc) {
     if (!loc) return "Unknown";
     if (loc.toLowerCase().includes("remote")) return "Remote";
@@ -34,7 +65,6 @@ function cleanLocation(loc) {
 function matchesQuery(title, query) {
     const words = query.toLowerCase().split(" ").filter(Boolean);
     const lowerTitle = title.toLowerCase();
-
     return words.some(word => lowerTitle.includes(word));
 }
 
@@ -44,106 +74,23 @@ function matchesLocation(jobLocation, searchLocation) {
     const loc = jobLocation.toLowerCase();
     const search = searchLocation.toLowerCase();
 
-    // Match local OR remote
     return loc.includes(search) || loc.includes("remote");
 }
 
-// ----------------------------
-// GREENHOUSE
-// ----------------------------
-async function scrapeGreenhouse(query, location) {
-    const companies = [
-        "airbnb", "stripe", "doordash", "shopify", "slack",
-        "coinbase", "dropbox", "reddit", "pinterest",
-        "square", "lyft", "instacart", "robinhood",
-        "figma", "datadog", "snowflake", "twilio"
-    ];
-    let results = [];
-
-    for (const company of companies) {
-        try {
-            const url = `https://boards-api.greenhouse.io/v1/boards/${company}/jobs?content=true`;
-
-            const { data } = await axios.get(url, { timeout: 8000 });
-
-            data.jobs.forEach(job => {
-                const title = job.title || "";
-                const loc = job.location?.name || "Unknown";
-
-                if (
-                    matchesQuery(title, query) &&
-                    matchesLocation(loc, location)
-                ) {
-                    results.push({
-                        title,
-                        company,
-                        location: cleanLocation(loc),
-                        source: "Greenhouse"
-                    });
-                }
-            });
-
-        } catch (err) {
-            console.log(`Greenhouse error (${company}) skipped`);
-        }
-    }
-
-    return results;
-}
-
-// ----------------------------
-// LEVER
-// ----------------------------
-async function scrapeLever(query, location) {
-    const companies = [
-        "netflix", "vercel", "shopify", "discord",
-        "robinhood", "figma", "segment", "notion"
-    ];
-    let results = [];
-
-    for (const company of companies) {
-        try {
-            const url = `https://api.lever.co/v0/postings/${company}?mode=json`;
-
-            const { data } = await axios.get(url, { timeout: 8000 });
-
-            data.forEach(job => {
-                const title = job.text || "";
-                const loc = job.categories?.location || "Unknown";
-
-                if (
-                    matchesQuery(title, query) &&
-                    matchesLocation(loc, location)
-                ) {
-                    results.push({
-                        title,
-                        company,
-                        location: cleanLocation(loc),
-                        source: "Lever"
-                    });
-                }
-            });
-
-        } catch (err) {
-            console.log(`Lever error (${company}) skipped`);
-        }
-    }
-
-    return results;
-}
-
-// ----------------------------
-// REMOTIVE
-// ----------------------------
+// =====================================================
+// REMOTIVE 
+// =====================================================
 async function scrapeRemotive(query, location) {
     try {
-        const url = `https://remotive.com/api/remote-jobs?search=${query}`;
+        const url = `https://remotive.com/api/remote-jobs?search=${encodeURIComponent(query)}`;
 
-        const { data } = await axios.get(url, { timeout: 8000 });
+        const { data } = await queuedGet(url, { timeout: 8000 });
+
+        if (!data?.jobs) return [];
 
         return data.jobs
             .filter(job =>
-                matchesQuery(job.title, query) &&
+                matchesQuery(job.title || "", query) &&
                 matchesLocation(job.candidate_required_location || "", location)
             )
             .map(job => ({
@@ -154,24 +101,30 @@ async function scrapeRemotive(query, location) {
             }));
 
     } catch (err) {
-        console.log("Remotive error");
+        console.log("Remotive error:", err.message);
         return [];
     }
 }
 
-// ----------------------------
-// ADZUNA
-// ----------------------------
+// =====================================================
+// ADZUNA 
+// =====================================================
 async function scrapeAdzuna(query, location) {
     try {
         const APP_ID = "3652d8fd";
         const APP_KEY = "868d60544868de9706ab43a1d5981fe2";
 
-        const url = `https://api.adzuna.com/v1/api/jobs/ca/search/1?app_id=${APP_ID}&app_key=${APP_KEY}&results_per_page=20&what=${encodeURIComponent(query)}&where=${encodeURIComponent(location)}`;
+        const url =
+            `https://api.adzuna.com/v1/api/jobs/ca/search/1` +
+            `?app_id=${APP_ID}` +
+            `&app_key=${APP_KEY}` +
+            `&results_per_page=30` +
+            `&what=${encodeURIComponent(query)}` +
+            `&where=${encodeURIComponent(location)}`;
 
-        const { data } = await axios.get(url, { timeout: 8000 });
+        const { data } = await queuedGet(url, { timeout: 8000 });
 
-        if (!data || !data.results) return [];
+        if (!data?.results) return [];
 
         return data.results.map(job => ({
             title: job.title || "Unknown",
@@ -186,9 +139,9 @@ async function scrapeAdzuna(query, location) {
     }
 }
 
-// ----------------------------
+// =====================================================
 // MAIN ENDPOINT
-// ----------------------------
+// =====================================================
 app.get("/api/jobs", async (req, res) => {
     try {
         const query = req.query.q || "developer";
@@ -197,7 +150,7 @@ app.get("/api/jobs", async (req, res) => {
         const cacheKey = `${query.toLowerCase()}-${location.toLowerCase()}`;
         const now = Date.now();
 
-        // Serve cache
+        // cache hit
         const cached = cache.get(cacheKey);
         if (cached && now - cached.timestamp < CACHE_TIME) {
             console.log("⚡ Cache hit:", cacheKey);
@@ -207,16 +160,19 @@ app.get("/api/jobs", async (req, res) => {
         console.log("🔥 API HIT:", new Date().toISOString());
         console.log("Query:", query, "| Location:", location);
 
-        const [greenhouse, lever, remotive, adzuna] = await Promise.all([
-            scrapeGreenhouse(query, location),
-            scrapeLever(query, location),
+        // =================================================
+        // SCRAPE IN PARALLEL
+        // =================================================
+        const [remotive, adzuna] = await Promise.all([
             scrapeRemotive(query, location),
             scrapeAdzuna(query, location)
         ]);
 
-        const jobs = [...greenhouse, ...lever, ...remotive, ...adzuna];
+        let jobs = [...remotive, ...adzuna];
 
-        // dedupe
+        // =================================================
+        // DEDUPE
+        // =================================================
         const uniqueJobs = Array.from(
             new Map(
                 jobs.map(job => [
@@ -226,21 +182,38 @@ app.get("/api/jobs", async (req, res) => {
             ).values()
         );
 
-        // sort local first
-        uniqueJobs.sort((a, b) => {
+        // =================================================
+        // GEOCODE (AFTER DATA EXISTS)
+        // =================================================
+        const jobsWithGeo = await Promise.all(
+            uniqueJobs.map(async (job) => {
+                const geo = await geocodeLocation(job.location);
+
+                return {
+                    ...job,
+                    geo
+                };
+            })
+        );
+
+        // =================================================
+        // SORT (LOCAL FIRST)
+        // =================================================
+        jobsWithGeo.sort((a, b) => {
             const aLocal = a.location.toLowerCase().includes(location.toLowerCase());
             const bLocal = b.location.toLowerCase().includes(location.toLowerCase());
             return bLocal - aLocal;
         });
 
+        // cache final response
         cache.set(cacheKey, {
-            data: uniqueJobs,
+            data: jobsWithGeo,
             timestamp: now
         });
 
-        console.log("TOTAL JOBS FOUND:", uniqueJobs.length);
+        console.log("TOTAL JOBS FOUND:", jobsWithGeo.length);
 
-        return res.json(uniqueJobs);
+        return res.json(jobsWithGeo);
 
     } catch (err) {
         console.error("API ERROR:", err);
@@ -248,6 +221,7 @@ app.get("/api/jobs", async (req, res) => {
     }
 });
 
+// =====================================================
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
 });
