@@ -5,7 +5,12 @@ const JobSearch = () => {
     const [location, setLocation] = useState("Calgary");
     const [jobs, setJobs] = useState([]);
 
+    const [loading, setLoading] = useState(false);
+
     const fetchJobs = async () => {
+        if (loading) return;
+        setLoading(true);
+
         try {
             const res = await fetch(
                 `http://localhost:3001/api/jobs?q=${query}&l=${location}`
@@ -13,24 +18,16 @@ const JobSearch = () => {
 
             const data = await res.json();
 
-            console.log("RAW RESPONSE:");
-            console.log(data);
-
-            console.log("LENGTH:", data.length);
-
-            console.log("STRINGIFIED:");
-            console.log(JSON.stringify(data, null, 2));
-
             if (Array.isArray(data)) {
                 setJobs(data);
             } else {
-                console.error("Backend error:", data);
                 setJobs([]);
             }
         } catch (err) {
-            console.error("Error fetching jobs:", err);
             setJobs([]);
         }
+
+        setLoading(false);
     };
 
     return (
@@ -65,8 +62,8 @@ const JobSearch = () => {
                 <p>Total jobs in state: {jobs.length}</p>
 
                 {jobs.map((job, index) => (
-                    <div key={index}>
-                        #{index + 1} — {job.title}
+                    <div key={`${job.title}-${job.company}-${job.location}-${index}`}>
+                        #{index + 1} — {job.title} — {job.company} ({job.location})
                     </div>
                 ))}
             </div>
