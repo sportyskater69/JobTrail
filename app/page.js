@@ -1,6 +1,6 @@
 'use client'
 
-import JobListing from "./frontend/JobListing";
+import JobListing from "./frontend/jobListing";
 
 
 
