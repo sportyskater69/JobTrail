@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import JobSearch from "../components/JobSearch";
+import CommuteTime from "../components/CommuteTime";
 import dynamic from "next/dynamic";
 
 const MapView = dynamic(() => import("../components/MapView"), {
@@ -19,14 +20,6 @@ export default function JobListing() {
   const [selectedJob, setSelectedJob] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
 
-  // ✅ FIX: hydration lock (prevents SSR/client mismatch)
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    setHydrated(true);
-  }, []);
-
-  // safer pagination math (never produces unstable 0/NaN edge states)
   const totalPages = Math.max(
     1,
     Math.ceil((totalJobs || 0) / pageSize)
@@ -47,11 +40,6 @@ export default function JobListing() {
       });
     });
   }, []);
-
-  // ✅ CRITICAL: ensure identical first render on server + client
-  if (!hydrated) {
-    return <main style={{ padding: 20 }} />;
-  }
 
   return (
     <main style={{ padding: 20 }}>
@@ -79,13 +67,10 @@ export default function JobListing() {
             <p>{job.company}</p>
             <p>{job.location}</p>
 
-            {job.geo && (
-              <div className="text-xs text-gray-500 mt-2">
-                🌍 {job.geo.lat}, {job.geo.lng}
-                <br />
-                📍 {job.geo.displayName}
-              </div>
-            )}
+            <CommuteTime
+              userLocation={userLocation}
+              job={job}
+            />
           </div>
         ))}
       </div>

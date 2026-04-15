@@ -8,6 +8,7 @@ import {
     useMap
 } from "react-leaflet";
 
+import { getJobPosition } from "../utils/getJobPosition";
 import { useEffect, useRef, useMemo } from "react";
 import L from "leaflet";
 import "leaflet-routing-machine";
@@ -27,22 +28,18 @@ L.Icon.Default.mergeOptions({
 });
 
 // ===============================
-// JITTER
+// USER ICON (RED PIN)
 // ===============================
-function jitterCoordinate(lat, lng, seed) {
-    let hash = 0;
-    for (let i = 0; i < seed.length; i++) {
-        hash = seed.charCodeAt(i) + ((hash << 5) - hash);
-    }
-
-    const jitterLat = ((hash % 100) / 100 - 0.5) * 0.02;
-    const jitterLng = ((hash % 73) / 73 - 0.5) * 0.02;
-
-    return {
-        lat: Number(lat) + jitterLat,
-        lng: Number(lng) + jitterLng
-    };
-}
+const userIcon = new L.Icon({
+    iconUrl:
+        "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
+    shadowUrl:
+        "https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png",
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41],
+});
 
 // ===============================
 // ROUTING
@@ -75,20 +72,14 @@ function Routing({ from, to }) {
 
         return () => {
             const current = routingRef.current;
-
             routingRef.current = null;
 
             if (!current) return;
 
-            try {
-                current.setWaypoints([]);
-            } catch { }
-
-            try {
-                map.removeControl(current);
-            } catch { }
+            try { current.setWaypoints([]); } catch { }
+            try { map.removeControl(current); } catch { }
         };
-    }, [map, from?.lat, from?.lng, to?.lat, to?.lng]);
+    }, [map, from.lat, from.lng, to.lat, to.lng, from, to]);
 
     return null;
 }
@@ -102,59 +93,32 @@ export default function MapView({
     selectedJob,
     setSelectedJob
 }) {
-    if (!userLocation) return <p>Loading map...</p>;
+    // ✅ hooks ALWAYS run first
+    const safeJobs = useMemo(() => {
+        return Array.isArray(jobs) ? jobs : [];
+    }, [jobs]);
 
-    const safeJobs = Array.isArray(jobs) ? jobs : [];
-
-    // 🔥 CRITICAL FIX: one source of truth per job
     const jobPositions = useMemo(() => {
         return safeJobs
-            .filter(job => job?.geo?.lat && job?.geo?.lng)
             .map(job => {
-
-                const base = {
-                    lat: job.geo.lat,
-                    lng: job.geo.lng
-                };
-
-                // 🔥 ONLY jitter city-center / fallback results
-                const shouldJitter = job.geo.isApproximate === true;
-
-                const finalPos = shouldJitter
-                    ? jitterCoordinate(
-                        base.lat,
-                        base.lng,
-                        `${job.title}-${job.company}-${job.location}`
-                    )
-                    : base;
+                const pos = getJobPosition(job);
+                if (!pos) return null;
 
                 return {
                     job,
-                    lat: finalPos.lat,
-                    lng: finalPos.lng
+                    lat: pos.lat,
+                    lng: pos.lng
                 };
-            });
+            })
+            .filter(Boolean);
     }, [safeJobs]);
 
     const selectedPosition = useMemo(() => {
-        if (!selectedJob?.geo) return null;
-
-        const base = {
-            lat: selectedJob.geo.lat,
-            lng: selectedJob.geo.lng
-        };
-
-        const shouldJitter = selectedJob.geo.isApproximate === true;
-
-        return shouldJitter
-            ? jitterCoordinate(
-                base.lat,
-                base.lng,
-                `${selectedJob.title}-${selectedJob.company}-${selectedJob.location}`
-            )
-            : base;
-
+        return getJobPosition(selectedJob);
     }, [selectedJob]);
+
+    // ❗ AFTER ALL HOOKS
+    if (!userLocation) return <p>Loading map...</p>;
 
     return (
         <MapContainer
@@ -168,7 +132,10 @@ export default function MapView({
             />
 
             {/* USER */}
-            <Marker position={[userLocation.lat, userLocation.lng]}>
+            <Marker
+                position={[userLocation.lat, userLocation.lng]}
+                icon={userIcon}
+            >
                 <Popup>You are here</Popup>
             </Marker>
 
@@ -189,7 +156,7 @@ export default function MapView({
                 </Marker>
             ))}
 
-            {/* ROUTING (NOW MATCHES PIN EXACTLY) */}
+            {/* ROUTING */}
             {selectedPosition && (
                 <Routing
                     from={{

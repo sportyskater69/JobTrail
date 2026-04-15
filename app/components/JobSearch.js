@@ -1,7 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
-
+import React, { useState, useRef, useMemo } from "react";
 
 const JobSearch = ({
     page,
@@ -10,8 +9,8 @@ const JobSearch = ({
     setJobs,
     setSelectedJob
 }) => {
-    const [query, setQuery] = useState(() => "");
-    const [location, setLocation] = useState(() => "");
+    const [query, setQuery] = useState("");
+    const [location, setLocation] = useState("");
     const [loading, setLoading] = useState(false);
 
     const cacheRef = useRef(new Map());
@@ -21,11 +20,11 @@ const JobSearch = ({
         [query, location]
     );
 
+    const canSearch =
+        query.trim().length > 0 &&
+        location.trim().length > 0 &&
+        !loading;
 
-
-    // =========================
-    // FETCH JOBS
-    // =========================
     const fetchJobs = async (force = false) => {
         if (loading) return;
 
@@ -66,24 +65,33 @@ const JobSearch = ({
         setLoading(false);
     };
 
+    // ✅ FULL REPLACEMENT UI
+    if (loading) {
+        return (
+            <div style={{ padding: "20px" }}>
+                <h2>Job Search</h2>
 
+                <div className="flex items-center justify-center border rounded-xl shadow-sm w-fit bg-white px-10 py-6">
+                    <p className="text-gray-600 animate-pulse">
+                        Searching jobs...
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div style={{ padding: "20px" }}>
-
             <h2>Job Search</h2>
 
-            {/* SEARCH BAR */}
             <div className="flex items-center border rounded-xl shadow-sm overflow-hidden w-fit bg-white">
 
                 <input
                     type="text"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    autoComplete="off"
                     placeholder="Job title, keywords..."
                     className="px-4 py-2 outline-none w-64"
-                    suppressHydrationWarning
                 />
 
                 <div className="h-6 w-px bg-gray-300" />
@@ -92,20 +100,22 @@ const JobSearch = ({
                     type="text"
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
-                    autoComplete="off"
                     placeholder="City or remote"
                     className="px-4 py-2 outline-none w-48"
-                    suppressHydrationWarning
                 />
 
                 <button
                     onClick={() => fetchJobs(true)}
-                    className="bg-blue-600 text-white px-6 py-2 hover:bg-blue-700 transition"
+                    disabled={!canSearch}
+                    className={`px-6 py-2 transition text-white
+                        ${canSearch
+                            ? "bg-blue-600 hover:bg-blue-700"
+                            : "bg-gray-400 cursor-not-allowed"
+                        }`}
                 >
                     Search
                 </button>
             </div>
-
         </div>
     );
 };
