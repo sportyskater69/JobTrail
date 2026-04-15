@@ -1,7 +1,7 @@
 const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
-const { geocodeLocation } = require("./services/geolocation");
+const { geocodeLocation, geocodeJobs } = require("./services/geolocation");
 
 const app = express();
 app.use(cors());
@@ -78,7 +78,7 @@ function matchesLocation(jobLocation, searchLocation) {
 }
 
 // =====================================================
-// REMOTIVE 
+// REMOTIVE
 // =====================================================
 async function scrapeRemotive(query, location) {
     try {
@@ -107,7 +107,7 @@ async function scrapeRemotive(query, location) {
 }
 
 // =====================================================
-// ADZUNA 
+// ADZUNA
 // =====================================================
 async function scrapeAdzuna(query, location) {
     try {
@@ -139,6 +139,8 @@ async function scrapeAdzuna(query, location) {
     }
 }
 
+
+
 // =====================================================
 // MAIN ENDPOINT
 // =====================================================
@@ -147,32 +149,37 @@ app.get("/api/jobs", async (req, res) => {
         const query = req.query.q || "developer";
         const location = req.query.l || "canada";
 
+        const page = parseInt(req.query.page || "1");
+        const pageSize = 10;
+
         const cacheKey = `${query.toLowerCase()}-${location.toLowerCase()}`;
         const now = Date.now();
 
-        // cache hit
         const cached = cache.get(cacheKey);
         if (cached && now - cached.timestamp < CACHE_TIME) {
             console.log("⚡ Cache hit:", cacheKey);
-            return res.json(cached.data);
+
+            const start = (page - 1) * pageSize;
+            const end = start + pageSize;
+
+            return res.json({
+                page,
+                pageSize,
+                total: cached.data.length,
+                jobs: cached.data.slice(start, end)
+            });
         }
 
         console.log("🔥 API HIT:", new Date().toISOString());
         console.log("Query:", query, "| Location:", location);
 
-        // =================================================
-        // SCRAPE IN PARALLEL
-        // =================================================
         const [remotive, adzuna] = await Promise.all([
             scrapeRemotive(query, location),
             scrapeAdzuna(query, location)
         ]);
 
-        let jobs = [...remotive, ...adzuna];
+        const jobs = [...remotive, ...adzuna];
 
-        // =================================================
-        // DEDUPE
-        // =================================================
         const uniqueJobs = Array.from(
             new Map(
                 jobs.map(job => [
@@ -182,38 +189,32 @@ app.get("/api/jobs", async (req, res) => {
             ).values()
         );
 
-        // =================================================
-        // GEOCODE (AFTER DATA EXISTS)
-        // =================================================
-        const jobsWithGeo = await Promise.all(
-            uniqueJobs.map(async (job) => {
-                const geo = await geocodeLocation(job.location);
+        const jobsWithGeo = await geocodeJobs(uniqueJobs);
 
-                return {
-                    ...job,
-                    geo
-                };
-            })
+        const validJobs = jobsWithGeo.filter(job =>
+            job.geo &&
+            typeof job.geo.lat === "number" &&
+            typeof job.geo.lng === "number"
         );
 
-        // =================================================
-        // SORT (LOCAL FIRST)
-        // =================================================
-        jobsWithGeo.sort((a, b) => {
-            const aLocal = a.location.toLowerCase().includes(location.toLowerCase());
-            const bLocal = b.location.toLowerCase().includes(location.toLowerCase());
-            return bLocal - aLocal;
-        });
-
-        // cache final response
         cache.set(cacheKey, {
-            data: jobsWithGeo,
+            data: validJobs,
             timestamp: now
         });
 
-        console.log("TOTAL JOBS FOUND:", jobsWithGeo.length);
+        const start = (page - 1) * pageSize;
+        const end = start + pageSize;
 
-        return res.json(jobsWithGeo);
+        const paginatedJobs = validJobs.slice(start, end);
+
+        console.log("TOTAL JOBS FOUND:", validJobs.length);
+
+        return res.json({
+            page,
+            pageSize,
+            total: validJobs.length,
+            jobs: paginatedJobs
+        });
 
     } catch (err) {
         console.error("API ERROR:", err);
