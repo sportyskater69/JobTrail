@@ -1,11 +1,14 @@
 'use client'
 
-import JobSearch from "./components/JobSearch";
+import JobListing from "./frontend/JobListing";
+
+
 
 export default function Home() {
   return (
     <main>
-      <JobSearch />
+      <JobListing />
     </main>
+
   );
 }
