@@ -20,10 +20,7 @@ const JobSearch = ({
         [query, location]
     );
 
-    const canSearch =
-        query.trim().length > 0 &&
-        location.trim().length > 0 &&
-        !loading;
+    const isDisabled = !query.trim() || !location.trim() || loading;
 
     const fetchJobs = async (force = false) => {
         if (loading) return;
@@ -41,9 +38,7 @@ const JobSearch = ({
         }
 
         try {
-            const res = await fetch(
-                `http://localhost:3001/api/jobs?q=${query}&l=${location}`
-            );
+            const res = await fetch(`/api/jobs?q=${encodeURIComponent(query)}&l=${encodeURIComponent(location)}`);
 
             const data = await res.json();
 
@@ -106,14 +101,14 @@ const JobSearch = ({
 
                 <button
                     onClick={() => fetchJobs(true)}
-                    disabled={!canSearch}
+                    disabled={isDisabled}
                     className={`px-6 py-2 transition text-white
-                        ${canSearch
-                            ? "bg-blue-600 hover:bg-blue-700"
-                            : "bg-gray-400 cursor-not-allowed"
+                            ${isDisabled
+                            ? "bg-gray-400 cursor-not-allowed"
+                            : "bg-blue-600 hover:bg-blue-700"
                         }`}
                 >
-                    Search
+                    {loading ? "Searching..." : "Search"}
                 </button>
             </div>
         </div>

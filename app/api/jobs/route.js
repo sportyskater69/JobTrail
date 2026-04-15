@@ -1,62 +1,15 @@
-//DEPRECATED, KEPT TO SHOW HOW I DID MY WORK
+import axios from "axios";
+import { geocodeJobs } from "@/lib/geolocation";
 
-const express = require("express");
-const axios = require("axios");
-const cors = require("cors");
-const { geocodeJobs } = require("./services/geolocation");
-
-const app = express();
-app.use(cors());
-
-const PORT = 3001;
-
-// =====================================================
-// WORKER QUEUE SYSTEM
-// =====================================================
-class Queue {
-    constructor(concurrency = 8) {
-        this.concurrency = concurrency;
-        this.running = 0;
-        this.queue = [];
-    }
-
-    add(task) {
-        return new Promise((resolve, reject) => {
-            this.queue.push({ task, resolve, reject });
-            this.next();
-        });
-    }
-
-    next() {
-        if (this.running >= this.concurrency || this.queue.length === 0) return;
-
-        const { task, resolve, reject } = this.queue.shift();
-        this.running++;
-
-        task()
-            .then(resolve)
-            .catch(reject)
-            .finally(() => {
-                this.running--;
-                this.next();
-            });
-    }
-}
-
-const scrapeQueue = new Queue(10);
-
-const queuedGet = (url, options = {}) =>
-    scrapeQueue.add(() => axios.get(url, options));
-
-// =====================================================
-// CACHE
-// =====================================================
+// =========================
+// SIMPLE CACHE 
+// =========================
 const cache = new Map();
 const CACHE_TIME = 60 * 1000;
 
-// =====================================================
+// =========================
 // HELPERS
-// =====================================================
+// =========================
 function matchesQuery(title, query) {
     const words = query.toLowerCase().split(" ").filter(Boolean);
     const lowerTitle = title.toLowerCase();
@@ -72,13 +25,13 @@ function matchesLocation(jobLocation, searchLocation) {
     return loc.includes(search) || loc.includes("remote");
 }
 
-// =====================================================
+// =========================
 // REMOTIVE
-// =====================================================
+// =========================
 async function scrapeRemotive(query, location) {
     try {
         const url = `https://remotive.com/api/remote-jobs?search=${encodeURIComponent(query)}`;
-        const { data } = await queuedGet(url, { timeout: 8000 });
+        const { data } = await axios.get(url, { timeout: 8000 });
 
         if (!data?.jobs) return [];
 
@@ -100,13 +53,13 @@ async function scrapeRemotive(query, location) {
     }
 }
 
-// =====================================================
+// =========================
 // ADZUNA
-// =====================================================
+// =========================
 async function scrapeAdzuna(query, location) {
     try {
-        const APP_ID = "3652d8fd";
-        const APP_KEY = "868d60544868de9706ab43a1d5981fe2";
+        const APP_ID = process.env.ADZUNA_APP_ID;
+        const APP_KEY = process.env.ADZUNA_APP_KEY;
 
         const url =
             `https://api.adzuna.com/v1/api/jobs/ca/search/1` +
@@ -116,7 +69,7 @@ async function scrapeAdzuna(query, location) {
             `&what=${encodeURIComponent(query)}` +
             `&where=${encodeURIComponent(location)}`;
 
-        const { data } = await queuedGet(url, { timeout: 8000 });
+        const { data } = await axios.get(url, { timeout: 8000 });
 
         if (!data?.results) return [];
 
@@ -133,24 +86,25 @@ async function scrapeAdzuna(query, location) {
     }
 }
 
-// =====================================================
-// MAIN ENDPOINT
-// =====================================================
-app.get("/api/jobs", async (req, res) => {
+// =========================
+// API ROUTE (Vercel)
+// =========================
+export async function GET(req) {
     try {
-        const query = req.query.q || "developer";
-        const location = req.query.l || "canada";
+        const { searchParams } = new URL(req.url);
+
+        const query = searchParams.get("q") || "developer";
+        const location = searchParams.get("l") || "canada";
 
         const cacheKey = `${query}-${location}`;
         const now = Date.now();
 
         const cached = cache.get(cacheKey);
         if (cached && now - cached.timestamp < CACHE_TIME) {
-            console.log("⚡ Cache hit");
-            return res.json({
+            return Response.json({
                 jobs: cached.data,
                 total: cached.data.length
-            });;
+            });
         }
 
         console.log("🔥 API HIT:", query, location);
@@ -162,23 +116,13 @@ app.get("/api/jobs", async (req, res) => {
 
         let jobs = [...remotive, ...adzuna];
 
-        // =================================================
         // DEDUPE
-        // =================================================
         jobs = Array.from(
             new Map(
                 jobs.map(j => [`${j.title}-${j.company}-${j.location}`, j])
             ).values()
-        );
+        ).slice(0, 25);
 
-        // =================================================
-        //  LIMIT BEFORE GEOCODING 
-        // =================================================
-        jobs = jobs.slice(0, 25);
-
-        // =================================================
-        // GEOCODE
-        // =================================================
         const jobsWithGeo = await geocodeJobs(jobs);
 
         cache.set(cacheKey, {
@@ -186,19 +130,16 @@ app.get("/api/jobs", async (req, res) => {
             timestamp: now
         });
 
-        console.log("✅ Jobs returned:", jobsWithGeo.length);
-
-        return res.json({
+        return Response.json({
             jobs: jobsWithGeo,
             total: jobsWithGeo.length
         });
 
     } catch (err) {
         console.error("API ERROR:", err);
-        return res.status(500).json({ error: "Scraping failed" });
+        return Response.json(
+            { error: "Scraping failed" },
+            { status: 500 }
+        );
     }
-});
-
-app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-});
+}
