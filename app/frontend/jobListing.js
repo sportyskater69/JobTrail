@@ -54,7 +54,7 @@ export default function JobListing() {
       />
 
       {/* MAIN LAYOUT */}
-      <div className="flex w-full h-[80vh] gap-4 mt-4">
+      <div className="flex w-full h-[80vh] gap-6 mt-4">
 
         {/* LEFT - JOB LIST */}
         <div className="w-1/2 h-full overflow-y-auto flex flex-col gap-3 pr-2">
@@ -78,22 +78,33 @@ export default function JobListing() {
           ))}
         </div>
 
-        {/* RIGHT - MAP (FULL HEIGHT FIX) */}
-        <div className="w-1/2 h-full rounded-xl overflow-hidden">
-          <div className="h-full w-full">
-            <MapView
-              userLocation={userLocation}
-              jobs={paginatedJobs}
-              selectedJob={selectedJob}
-              setSelectedJob={setSelectedJob}
-            />
+        {/* RIGHT - CENTERED MAP SECTION */}
+        <div className="w-1/2 h-full flex items-center justify-center">
+
+          <div className="w-full max-w-xl flex flex-col gap-3">
+
+            {/* TITLE */}
+            <h1 className="text-2xl font-bold text-center">
+              Job Map
+            </h1>
+
+            {/* MAP + DIRECTIONS*/}
+            <div className="rounded-xl overflow-hidden shadow-md">
+              <MapView
+                userLocation={userLocation}
+                jobs={paginatedJobs}
+                selectedJob={selectedJob}
+                setSelectedJob={setSelectedJob}
+              />
+            </div>
+
           </div>
         </div>
 
       </div>
 
       {/* PAGINATION */}
-      <div className="flex gap-2 mt-6 items-center">
+      <div className="flex gap-3 mt-6 items-center justify-center">
         <button
           onClick={() => setPage((p) => Math.max(p - 1, 1))}
           disabled={page <= 1}

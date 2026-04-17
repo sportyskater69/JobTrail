@@ -9,7 +9,7 @@ import {
 } from "react-leaflet";
 
 import { getJobPosition } from "../utils/getJobPosition";
-import { useEffect, useRef, useMemo } from "react";
+import { useEffect, useRef, useMemo, useState } from "react";
 import L from "leaflet";
 import "leaflet-routing-machine";
 import "leaflet/dist/leaflet.css";
@@ -44,7 +44,7 @@ const userIcon = new L.Icon({
 // ===============================
 // ROUTING
 // ===============================
-function Routing({ from, to }) {
+function Routing({ from, to, onRouteReady }) {
     const map = useMap();
     const routingRef = useRef(null);
 
@@ -58,10 +58,16 @@ function Routing({ from, to }) {
             ],
             routeWhileDragging: false,
             addWaypoints: false,
+
+
             show: false,
+
             lineOptions: {
                 styles: [{ color: "blue", weight: 4 }],
             },
+
+            createMarker: () => null,
+
             router: L.Routing.osrmv1({
                 serviceUrl: "https://router.project-osrm.org/route/v1"
             })
@@ -70,22 +76,27 @@ function Routing({ from, to }) {
         control.addTo(map);
         routingRef.current = control;
 
+
+        if (typeof window !== "undefined" && onRouteReady) {
+            const container = control.getContainer();
+            onRouteReady(container);
+        }
+
         return () => {
             const current = routingRef.current;
             routingRef.current = null;
 
             if (!current) return;
 
-            try { current.setWaypoints([]); } catch { }
             try { map.removeControl(current); } catch { }
         };
-    }, [map, from.lat, from.lng, to.lat, to.lng, from, to]);
+    }, [map, from?.lat, from?.lng, to?.lat, to?.lng, onRouteReady]);
 
     return null;
 }
 
 // ===============================
-// MAP
+// MAP VIEW
 // ===============================
 export default function MapView({
     userLocation,
@@ -93,7 +104,14 @@ export default function MapView({
     selectedJob,
     setSelectedJob
 }) {
-    // ✅ hooks ALWAYS run first
+    const [directionsEl, setDirectionsEl] = useState(null);
+    const [mounted, setMounted] = useState(false);
+
+    // hydration safety
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
     const safeJobs = useMemo(() => {
         return Array.isArray(jobs) ? jobs : [];
     }, [jobs]);
@@ -117,55 +135,73 @@ export default function MapView({
         return getJobPosition(selectedJob);
     }, [selectedJob]);
 
-    // ❗ AFTER ALL HOOKS
-    if (!userLocation) return <p>Loading map...</p>;
+    if (!mounted) return <p>Loading map...</p>;
+    if (!userLocation) return <p>Loading location...</p>;
 
     return (
-        <MapContainer
-            center={[userLocation.lat, userLocation.lng]}
-            zoom={10}
-            style={{ height: "400px", width: "100%" }}
-        >
-            <TileLayer
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                attribution="&copy; OpenStreetMap"
-            />
+        <div className="w-full flex flex-col gap-4">
 
-            {/* USER */}
-            <Marker
-                position={[userLocation.lat, userLocation.lng]}
-                icon={userIcon}
+            {/* MAP */}
+            <MapContainer
+                center={[userLocation.lat, userLocation.lng]}
+                zoom={10}
+                style={{ height: "400px", width: "100%" }}
             >
-                <Popup>You are here</Popup>
-            </Marker>
-
-            {/* JOB MARKERS */}
-            {jobPositions.map(({ job, lat, lng }, i) => (
-                <Marker
-                    key={`${job.title}-${job.company}-${i}`}
-                    position={[lat, lng]}
-                    eventHandlers={{
-                        click: () => setSelectedJob(job)
-                    }}
-                >
-                    <Popup>
-                        <b>{job.title}</b>
-                        <br />
-                        {job.company}
-                    </Popup>
-                </Marker>
-            ))}
-
-            {/* ROUTING */}
-            {selectedPosition && (
-                <Routing
-                    from={{
-                        lat: userLocation.lat,
-                        lng: userLocation.lng
-                    }}
-                    to={selectedPosition}
+                <TileLayer
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    attribution="&copy; OpenStreetMap"
                 />
+
+                {/* USER */}
+                <Marker
+                    position={[userLocation.lat, userLocation.lng]}
+                    icon={userIcon}
+                >
+                    <Popup>You are here</Popup>
+                </Marker>
+
+                {/* JOB MARKERS */}
+                {jobPositions.map(({ job, lat, lng }, i) => (
+                    <Marker
+                        key={`${job.title}-${job.company}-${i}`}
+                        position={[lat, lng]}
+                        eventHandlers={{
+                            click: () => setSelectedJob(job)
+                        }}
+                    >
+                        <Popup>
+                            <b>{job.title}</b>
+                            <br />
+                            {job.company}
+                        </Popup>
+                    </Marker>
+                ))}
+
+                {/* ROUTING */}
+                {selectedPosition && (
+                    <Routing
+                        from={{
+                            lat: userLocation.lat,
+                            lng: userLocation.lng
+                        }}
+                        to={selectedPosition}
+                        onRouteReady={setDirectionsEl}
+                    />
+                )}
+            </MapContainer>
+
+            {/* DIRECTIONS BELOW MAP */}
+            {directionsEl && (
+                <div className="bg-white p-4 rounded-xl shadow-md max-h-64 overflow-auto text-[#87A646]">
+                    <div
+                        ref={(node) => {
+                            if (node && directionsEl && !node.contains(directionsEl)) {
+                                node.appendChild(directionsEl);
+                            }
+                        }}
+                    />
+                </div>
             )}
-        </MapContainer>
+        </div>
     );
 }
