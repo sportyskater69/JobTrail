@@ -120,7 +120,6 @@ async function geocodeLocation(jobOrQuery) {
 
     const key = location.toLowerCase();
 
-    // ⚠️ IMPORTANT: return cached FULL object
     if (geoCache.has(key)) {
         return geoCache.get(key);
     }
