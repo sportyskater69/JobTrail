@@ -42,7 +42,7 @@ export default function JobListing() {
   }, []);
 
   return (
-    <main style={{ padding: 20 }}>
+    <main className="bg-[#F5F5F0] min-h-screen p-5">
 
       {/* SEARCH */}
       <JobSearch
@@ -53,42 +53,51 @@ export default function JobListing() {
         setSelectedJob={setSelectedJob}
       />
 
-      {/* RESULTS */}
-      <div className="flex flex-col gap-3 mt-4">
-        <p>Total jobs: {totalJobs}</p>
+      {/* MAIN LAYOUT */}
+      <div className="flex w-full h-[80vh] gap-4 mt-4">
 
-        {paginatedJobs.map((job, index) => (
-          <div
-            key={`${job.title}-${job.company}-${index}`}
-            onClick={() => setSelectedJob(job)}
-            className="border p-3 rounded-xl cursor-pointer"
-          >
-            <p className="font-bold text-xl">{job.title}</p>
-            <p>{job.company}</p>
-            <p>{job.location}</p>
+        {/* LEFT - JOB LIST */}
+        <div className="w-1/2 h-full overflow-y-auto flex flex-col gap-3 pr-2">
+          <p className="ml-2">Total jobs: {totalJobs}</p>
 
-            <CommuteTime
+          {paginatedJobs.map((job, index) => (
+            <div
+              key={`${job.title}-${job.company}-${index}`}
+              onClick={() => setSelectedJob(job)}
+              className="border p-3 rounded-xl cursor-pointer bg-white"
+            >
+              <p className="font-bold text-xl">{job.title}</p>
+              <p>{job.company}</p>
+              <p>{job.location}</p>
+
+              <CommuteTime
+                userLocation={userLocation}
+                job={job}
+              />
+            </div>
+          ))}
+        </div>
+
+        {/* RIGHT - MAP (FULL HEIGHT FIX) */}
+        <div className="w-1/2 h-full rounded-xl overflow-hidden">
+          <div className="h-full w-full">
+            <MapView
               userLocation={userLocation}
-              job={job}
+              jobs={paginatedJobs}
+              selectedJob={selectedJob}
+              setSelectedJob={setSelectedJob}
             />
           </div>
-        ))}
-      </div>
+        </div>
 
-      {/* MAP */}
-      <MapView
-        userLocation={userLocation}
-        jobs={paginatedJobs}
-        selectedJob={selectedJob}
-        setSelectedJob={setSelectedJob}
-      />
+      </div>
 
       {/* PAGINATION */}
       <div className="flex gap-2 mt-6 items-center">
         <button
           onClick={() => setPage((p) => Math.max(p - 1, 1))}
           disabled={page <= 1}
-          className="px-3 py-1 border rounded"
+          className="px-3 py-1 border rounded bg-[#87A646]"
         >
           Prev
         </button>
@@ -102,7 +111,7 @@ export default function JobListing() {
             setPage((p) => Math.min(p + 1, totalPages))
           }
           disabled={totalJobs === 0 || page >= totalPages}
-          className="px-3 py-1 border rounded"
+          className="px-3 py-1 border rounded bg-[#87A646]"
         >
           Next
         </button>

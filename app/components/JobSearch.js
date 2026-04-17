@@ -77,7 +77,7 @@ const JobSearch = ({
 
     return (
         <div style={{ padding: "20px" }}>
-            <h2>Job Search</h2>
+            <h2 className="text-xl text-[#4D531D]">Job Search</h2>
 
             <div className="flex items-center border rounded-xl shadow-sm overflow-hidden w-fit bg-white">
 
@@ -105,7 +105,7 @@ const JobSearch = ({
                     className={`px-6 py-2 transition text-white
                             ${isDisabled
                             ? "bg-gray-400 cursor-not-allowed"
-                            : "bg-blue-600 hover:bg-blue-700"
+                            : "bg-[#87A646] hover:bg-[#4D531D]"
                         }`}
                 >
                     {loading ? "Searching..." : "Search"}
