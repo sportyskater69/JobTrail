@@ -60,7 +60,6 @@ const JobSearch = ({
         setLoading(false);
     };
 
-    // ✅ FULL REPLACEMENT UI
     if (loading) {
         return (
             <div style={{ padding: "20px" }}>
@@ -95,7 +94,7 @@ const JobSearch = ({
                     type="text"
                     value={location}
                     onChange={(e) => setLocation(e.target.value)}
-                    placeholder="City or remote"
+                    placeholder="City"
                     className="px-4 py-2 outline-none w-48"
                 />
 
