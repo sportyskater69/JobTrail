@@ -62,11 +62,11 @@ const JobSearch = ({
 
     if (loading) {
         return (
-            <div style={{ padding: "20px" }}>
-                <h2>Job Search</h2>
+            <div className="text-black dark:text-white">
+                <h2 className="font-bold">JobTrail</h2>
 
                 <div className="flex items-center justify-center border rounded-xl shadow-sm w-fit bg-white px-10 py-6">
-                    <p className="text-gray-600 animate-pulse">
+                    <p className="text-black dark:text-white animate-pulse">
                         Searching jobs...
                     </p>
                 </div>
@@ -75,7 +75,7 @@ const JobSearch = ({
     }
 
     return (
-        <div style={{ padding: "20px" }}>
+        <div className="text-black dark:text-white" style={{ padding: "20px" }}>
             <h2 className="text-xl text-[#4D531D]">Job Search</h2>
 
             <div className="flex items-center border rounded-xl shadow-sm overflow-hidden w-fit bg-white">
