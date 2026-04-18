@@ -42,7 +42,7 @@ export default function JobListing() {
   }, []);
 
   return (
-    <main className="bg-[#F5F5F0] min-h-screen p-5">
+    <main className="bg-[#F5F5F0] min-h-screen p-5 text-black dark:text-black">
 
       {/* SEARCH */}
       <JobSearch
